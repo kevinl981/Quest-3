@@ -150,20 +150,41 @@ Handlers.add(
   end
 )
 
--- Handler to decide the next best action.
+-- Handler to decide the next best action after the game state is updated.
 Handlers.add(
   "decideNextAction",
   Handlers.utils.hasMatchingTag("Action", "UpdatedGameState"),
   function ()
-    if LatestGameState.GameMode ~= "Playing" then 
-      InAction = false
+    -- Check if the game mode is 'Playing' before deciding the next action
+    if GameState.LatestGameState.GameMode ~= "Playing" then 
+      GameState.InAction = false
       return 
     end
     print("Deciding next action.")
-    decideNextAction()
-    ao.send({Target = ao.id, Action = "Tick"})
+
+    -- Retrieve the current player's state
+    local player = GameState.LatestGameState.Players[ao.id]
+    if not player or not player.Position then
+      print("Error: Player or player position not found.")
+      return
+    end
+
+    -- Find a safe direction to move to
+    local safeDirection = PlayerActions.findSafeDirection(player.Position, GameState.LatestGameState.Players)
+    if safeDirection then
+      -- Move to a safer position if health or energy is low
+      print("Moving to a safer position in direction: " .. safeDirection)
+      ao.send({Target = GameState.Game, Action = "PlayerMove", Player = ao.id, Direction = safeDirection})
+    else
+      -- If no safe direction is found, decide whether to attack or stay put
+      GameLogic.decideNextAction()
+    end
+
+    -- Send a 'Tick' action to indicate the decision has been made
+    ao.send({Target = GameState.Game, Action = "Tick"})
   end
 )
+
 -- Handler to automatically attack when hit by another player.
 Handlers.add(
   "ReturnAttack",
